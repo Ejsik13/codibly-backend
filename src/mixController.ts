@@ -53,19 +53,29 @@ export async function getOptimalWindow(req: Request, res: Response) {
 
     const intervals = await fetchGeneration(start, end);
 
+    if (!intervals || intervals.length < intervalsNeeded) {
+      return res.status(500).json({ error: "Not enough intervals returned" });
+    }
+
     intervals.sort((a, b) => (a.from < b.from ? -1 : 1));
 
     const clean = intervals.map(cleanShare);
+
+    if (clean.length < intervalsNeeded) {
+      return res.status(500).json({ error: "Not enough clean data" });
+    }
 
     let bestAvg = -1;
     let bestIndex = 0;
 
     let sum = 0;
-    for (let i = 0; i < intervalsNeeded; i++) sum += clean[i];
+    for (let i = 0; i < intervalsNeeded; i++) {
+      sum += clean[i] ?? 0;
+    }
     bestAvg = sum / intervalsNeeded;
 
     for (let i = intervalsNeeded; i < clean.length; i++) {
-      sum += clean[i] - clean[i - intervalsNeeded];
+      sum += (clean[i] ?? 0) - (clean[i - intervalsNeeded] ?? 0);
       const avg = sum / intervalsNeeded;
       if (avg > bestAvg) {
         bestAvg = avg;
@@ -73,12 +83,16 @@ export async function getOptimalWindow(req: Request, res: Response) {
       }
     }
 
-    const startTime = intervals[bestIndex].from;
-    const endTime = intervals[bestIndex + intervalsNeeded - 1].to;
+    const startInterval = intervals[bestIndex];
+    const endInterval = intervals[bestIndex + intervalsNeeded - 1];
+
+    if (!startInterval || !endInterval) {
+      return res.status(500).json({ error: "Invalid interval index" });
+    }
 
     const result: OptimalWindowResult = {
-      start: startTime,
-      end: endTime,
+      start: startInterval.from,
+      end: endInterval.to,
       cleanPercentage: bestAvg
     };
 
